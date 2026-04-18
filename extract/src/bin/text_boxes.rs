@@ -330,7 +330,7 @@ fn fuse_text_entries(mut entries: Vec<TextEntry>) -> Vec<TextField> {
             let last = current_line.last().unwrap();
             // Check if on same line (y overlap) and close in x
             let y_overlap = entry.y1 < last.y2 && entry.y2 > last.y1;
-            let x_close = entry.x1 <= last.x2 + 5.0; // 5 units threshold
+            let x_close = last.x1 <= entry.x1 && entry.x1 <= last.x2 + 5.0; // 5 units threshold
             if y_overlap && x_close {
                 current_line.push(entry);
             } else {
