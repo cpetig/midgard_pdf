@@ -1,6 +1,19 @@
 use anyhow::{Context, Result};
 use lopdf::{content::{Content, Operation}, Document, Encoding, Object};
+use serde::Serialize;
 use std::{collections::BTreeMap, env, path::PathBuf};
+
+#[derive(Serialize)]
+struct Page {
+    number: u32,
+    text_fields: Vec<TextField>,
+}
+
+#[derive(Serialize)]
+struct TextField {
+    bbox: [f32; 4],
+    text: String,
+}
 
 fn main() -> Result<()> {
     let path = env::args()
@@ -10,21 +23,22 @@ fn main() -> Result<()> {
 
     let doc = Document::load(&path)?;
     let pages = doc.get_pages();
+    let mut output_pages = Vec::new();
 
     for (page_number, page_id) in pages {
         let fonts = doc.get_page_fonts(page_id)?;
         let font_metrics = build_font_metrics(&doc, &fonts);
         let content = doc.get_and_decode_page_content(page_id)?;
         let entries = extract_text_entries(&doc, &font_metrics, &content);
-
-        for entry in entries {
-            println!(
-                "page {} bbox [{:.2}, {:.2}, {:.2}, {:.2}] text: {}",
-                page_number, entry.x1, entry.y1, entry.x2, entry.y2, entry.text
-            );
-        }
+        let text_fields = fuse_text_entries(entries);
+        output_pages.push(Page {
+            number: page_number,
+            text_fields,
+        });
     }
 
+    let yaml = serde_yaml::to_string(&output_pages)?;
+    println!("{}", yaml);
     Ok(())
 }
 
@@ -261,6 +275,65 @@ fn extract_text_entries(
     }
 
     entries
+}
+
+fn fuse_text_entries(mut entries: Vec<TextEntry>) -> Vec<TextField> {
+    if entries.is_empty() {
+        return Vec::new();
+    }
+
+    // Sort by y1 (top), then by x1 (left)
+    entries.sort_by(|a, b| {
+        a.y1.partial_cmp(&b.y1).unwrap_or(std::cmp::Ordering::Equal)
+            .then(a.x1.partial_cmp(&b.x1).unwrap_or(std::cmp::Ordering::Equal))
+    });
+
+    let mut fields = Vec::new();
+    let mut current_line: Vec<TextEntry> = Vec::new();
+
+    for entry in entries {
+        if current_line.is_empty() {
+            current_line.push(entry);
+        } else {
+            let last = current_line.last().unwrap();
+            // Check if on same line (y overlap) and close in x
+            let y_overlap = entry.y1 < last.y2 && entry.y2 > last.y1;
+            let x_close = entry.x1 <= last.x2 + 5.0; // 5 units threshold
+            if y_overlap && x_close {
+                current_line.push(entry);
+            } else {
+                // Fuse current line
+                fields.push(fuse_line(&current_line));
+                current_line = vec![entry];
+            }
+        }
+    }
+    if !current_line.is_empty() {
+        fields.push(fuse_line(&current_line));
+    }
+
+    fields
+}
+
+fn fuse_line(line: &[TextEntry]) -> TextField {
+    let mut text = String::new();
+    let mut x1 = f32::INFINITY;
+    let mut y1 = f32::INFINITY;
+    let mut x2 = f32::NEG_INFINITY;
+    let mut y2 = f32::NEG_INFINITY;
+
+    for entry in line {
+        text.push_str(&entry.text);
+        x1 = x1.min(entry.x1);
+        y1 = y1.min(entry.y1);
+        x2 = x2.max(entry.x2);
+        y2 = y2.max(entry.y2);
+    }
+
+    TextField {
+        bbox: [x1, y1, x2, y2],
+        text,
+    }
 }
 
 fn make_text_entry(
