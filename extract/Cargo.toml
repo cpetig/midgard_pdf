@@ -1,0 +1,9 @@
+[package]
+name = "extract"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+lopdf = "0.40.0"
+pdf-extract = "0.10.0"
