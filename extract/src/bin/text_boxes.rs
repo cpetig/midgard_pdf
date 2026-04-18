@@ -313,35 +313,37 @@ fn fuse_text_entries(mut entries: Vec<TextEntry>) -> Vec<TextField> {
         return Vec::new();
     }
 
-    // Sort by y1 (top), then by x1 (left)
+    // Sort by x1 (left), then by y1 (top)
     entries.sort_by(|a, b| {
-        a.y1.partial_cmp(&b.y1)
+        a.x1.partial_cmp(&b.x1)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then(a.x1.partial_cmp(&b.x1).unwrap_or(std::cmp::Ordering::Equal))
+            .then(a.y1.partial_cmp(&b.y1).unwrap_or(std::cmp::Ordering::Equal))
     });
 
     let mut fields = Vec::new();
-    let mut current_line: Vec<TextEntry> = Vec::new();
+    while !entries.is_empty() {
+        let mut group = vec![entries.remove(0)];
+        let mut group_y1 = group[0].y1;
+        let mut group_y2 = group[0].y2;
+        let mut group_x2 = group[0].x2;
 
-    for entry in entries {
-        if current_line.is_empty() {
-            current_line.push(entry);
-        } else {
-            let last = current_line.last().unwrap();
-            // Check if on same line (y overlap) and close in x
-            let y_overlap = entry.y1 < last.y2 && entry.y2 > last.y1;
-            let x_close = last.x1 <= entry.x1 && entry.x1 <= last.x2 + 5.0; // 5 units threshold
+        let mut i = 0;
+        while i < entries.len() {
+            let entry = &entries[i];
+            let y_overlap = entry.y1 < group_y2 && entry.y2 > group_y1;
+            let x_close = entry.x1 <= group_x2 + 5.0;
             if y_overlap && x_close {
-                current_line.push(entry);
+                let entry = entries.remove(i);
+                group_y1 = group_y1.min(entry.y1);
+                group_y2 = group_y2.max(entry.y2);
+                group_x2 = group_x2.max(entry.x2);
+                group.push(entry);
             } else {
-                // Fuse current line
-                fields.push(fuse_line(&current_line));
-                current_line = vec![entry];
+                i += 1;
             }
         }
-    }
-    if !current_line.is_empty() {
-        fields.push(fuse_line(&current_line));
+
+        fields.push(fuse_line(&group));
     }
 
     fields
