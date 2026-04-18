@@ -4,11 +4,11 @@ use std::env;
 use std::path::PathBuf;
 
 fn main() -> Result<()> {
-    let mut args = env::args().skip(1);
+    let args = env::args().skip(1);
     let mut show_bbox = false;
     let mut path = None;
 
-    while let Some(arg) = args.next() {
+    for arg in args {
         match arg.as_str() {
             "--bbox" | "-b" => show_bbox = true,
             _ if path.is_none() => path = Some(PathBuf::from(arg)),
@@ -77,13 +77,12 @@ fn print_field(doc: &Document, object: &Object, indent: usize, show_bbox: bool) 
         }
     }
 
-    if let Ok(kids_obj) = field_dict.get(b"Kids").and_then(|obj| doc.dereference(obj).map(|(_, obj)| obj)) {
-        if let Ok(kids) = kids_obj.as_array() {
+    if let Ok(kids_obj) = field_dict.get(b"Kids").and_then(|obj| doc.dereference(obj).map(|(_, obj)| obj))
+        && let Ok(kids) = kids_obj.as_array() {
             for kid in kids {
                 print_field(doc, kid, indent + 1, show_bbox)?;
             }
         }
-    }
 
     Ok(())
 }
@@ -91,23 +90,20 @@ fn print_field(doc: &Document, object: &Object, indent: usize, show_bbox: bool) 
 fn collect_rects(doc: &Document, field_dict: &lopdf::Dictionary) -> Result<Vec<String>> {
     let mut rects = Vec::new();
 
-    if let Some(rect_obj) = field_dict.get(b"Rect").ok() {
+    if let Ok(rect_obj) = field_dict.get(b"Rect") {
         rects.push(object_to_string(doc, rect_obj)?);
     }
 
-    if let Ok(kids_obj) = field_dict.get(b"Kids") {
-        if let Ok((_, kids)) = doc.dereference(kids_obj) {
-            if let Ok(kids_array) = kids.as_array() {
+    if let Ok(kids_obj) = field_dict.get(b"Kids")
+        && let Ok((_, kids)) = doc.dereference(kids_obj)
+            && let Ok(kids_array) = kids.as_array() {
                 for kid in kids_array {
-                    if let Ok((_, kid_obj)) = doc.dereference(kid) {
-                        if let Ok(kid_dict) = kid_obj.as_dict() {
+                    if let Ok((_, kid_obj)) = doc.dereference(kid)
+                        && let Ok(kid_dict) = kid_obj.as_dict() {
                             rects.extend(collect_rects(doc, kid_dict)?);
                         }
-                    }
                 }
             }
-        }
-    }
 
     Ok(rects)
 }

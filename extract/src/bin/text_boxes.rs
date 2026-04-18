@@ -88,17 +88,15 @@ impl<'a> FontMetrics<'a> {
     }
 
     fn font_metrics_from_descriptor(font: &lopdf::Dictionary, doc: &Document) -> (f32, f32) {
-        if let Ok(descriptor_obj) = font.get(b"FontDescriptor") {
-            if let Ok((_, descriptor)) = doc.dereference(descriptor_obj) {
-                if let Ok(descriptor_dict) = descriptor.as_dict() {
+        if let Ok(descriptor_obj) = font.get(b"FontDescriptor")
+            && let Ok((_, descriptor)) = doc.dereference(descriptor_obj)
+                && let Ok(descriptor_dict) = descriptor.as_dict() {
                     let ascent = descriptor_dict.get(b"Ascent").and_then(Object::as_f32).unwrap_or(0.0);
                     let descent = descriptor_dict.get(b"Descent").and_then(Object::as_f32).unwrap_or(0.0);
                     if ascent != 0.0 || descent != 0.0 {
                         return (ascent, descent);
                     }
                 }
-            }
-        }
         (700.0, -200.0)
     }
 
@@ -221,11 +219,10 @@ fn extract_text_entries(
                 if let Some(font_name) = operation.operands.first().and_then(|operand| get_name(doc, operand)) {
                     state.font_name = Some(font_name.to_vec());
                 }
-                if let Some(size_obj) = operation.operands.get(1) {
-                    if let Ok(size) = get_number(doc, size_obj) {
+                if let Some(size_obj) = operation.operands.get(1)
+                    && let Ok(size) = get_number(doc, size_obj) {
                         state.font_size = size;
                     }
-                }
             }
             "Tc" if in_text => {
                 if let Some(value) = operation.operands.first().and_then(|operand| get_number(doc, operand).ok()) {
@@ -253,22 +250,20 @@ fn extract_text_entries(
                 }
             }
             "Tj" if in_text => {
-                if let Some(text_obj) = operation.operands.first() {
-                    if let Some(entry) = make_text_entry(doc, &state, text_obj, fonts) {
+                if let Some(text_obj) = operation.operands.first()
+                    && let Some(entry) = make_text_entry(doc, &state, text_obj, fonts) {
                         entries.push(entry);
                         let width = calculate_text_width(doc, &state, text_obj, fonts);
                         state.tm = multiply_matrix(state.tm, [1.0, 0.0, 0.0, 1.0, width, 0.0]);
                     }
-                }
             }
             "TJ" if in_text => {
-                if let Some(array_obj) = operation.operands.first() {
-                    if let Some(entry) = make_text_entry(doc, &state, array_obj, fonts) {
+                if let Some(array_obj) = operation.operands.first()
+                    && let Some(entry) = make_text_entry(doc, &state, array_obj, fonts) {
                         entries.push(entry);
                         let width = calculate_text_width(doc, &state, array_obj, fonts);
                         state.tm = multiply_matrix(state.tm, [1.0, 0.0, 0.0, 1.0, width, 0.0]);
                     }
-                }
             }
             _ => {}
         }
@@ -343,7 +338,7 @@ fn make_text_entry(
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
 ) -> Option<TextEntry> {
     let (text, length) = if let Ok(string_bytes) = extract_bytes(doc, text_obj) {
-        let (decoded, width) = decode_and_width(&string_bytes, state, fonts);
+        let (decoded, width) = decode_and_width(string_bytes, state, fonts);
         (decoded, width)
     } else if let Ok((_, obj)) = doc.dereference(text_obj) {
         if let Ok(array) = obj.as_array() {
@@ -373,7 +368,7 @@ fn calculate_text_width(
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
 ) -> f32 {
     if let Ok(string_bytes) = extract_bytes(doc, text_obj) {
-        width_for_bytes(&string_bytes, state, fonts)
+        width_for_bytes(string_bytes, state, fonts)
     } else if let Ok((_, obj)) = doc.dereference(text_obj) {
         if let Ok(array) = obj.as_array() {
             width_for_array(doc, array, state, fonts)
@@ -394,7 +389,7 @@ fn width_for_array(
     let mut width = 0.0;
     for item in array {
         if let Ok(string_bytes) = extract_bytes(doc, item) {
-            width += width_for_bytes(&string_bytes, state, fonts);
+            width += width_for_bytes(string_bytes, state, fonts);
         } else if let Ok(adjustment) = get_number(doc, item) {
             width -= adjustment / 1000.0 * state.font_size * state.hscale;
         }
@@ -407,15 +402,14 @@ fn decode_and_width(
     state: &TextState,
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
 ) -> (String, f32) {
-    if let Some(name) = &state.font_name {
-        if let Some(metrics) = fonts.get(name) {
+    if let Some(name) = &state.font_name
+        && let Some(metrics) = fonts.get(name) {
             let text = metrics.decode_text(bytes);
             let width = metrics.width_for_bytes(bytes, state.char_space, state.word_space)
                 * state.font_size
                 * state.hscale;
             return (text, width);
         }
-    }
     (
         String::from_utf8_lossy(bytes).to_string(),
         bytes.len() as f32 * state.font_size * state.hscale * 0.5,
@@ -432,7 +426,7 @@ fn decode_and_width_array(
     let mut width = 0.0;
     for item in array {
         if let Ok(bytes) = extract_bytes(doc, item) {
-            let (decoded, chunk_width) = decode_and_width(&bytes, state, fonts);
+            let (decoded, chunk_width) = decode_and_width(bytes, state, fonts);
             text.push_str(&decoded);
             width += chunk_width;
         } else if let Ok(adjustment) = get_number(doc, item) {
@@ -447,13 +441,12 @@ fn width_for_bytes(
     state: &TextState,
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
 ) -> f32 {
-    if let Some(name) = &state.font_name {
-        if let Some(metrics) = fonts.get(name) {
+    if let Some(name) = &state.font_name
+        && let Some(metrics) = fonts.get(name) {
             return metrics.width_for_bytes(bytes, state.char_space, state.word_space)
                 * state.font_size
                 * state.hscale;
         }
-    }
     bytes.len() as f32 * state.font_size * state.hscale * 0.5
 }
 
@@ -498,11 +491,10 @@ fn parse_matrix(doc: &Document, operands: &[Object]) -> Option<[f32; 6]> {
 }
 
 fn parse_two_numbers(doc: &Document, operands: &[Object]) -> Option<(f32, f32)> {
-    if operands.len() >= 2 {
-        if let (Ok(tx), Ok(ty)) = (get_number(doc, &operands[0]), get_number(doc, &operands[1])) {
+    if operands.len() >= 2
+        && let (Ok(tx), Ok(ty)) = (get_number(doc, &operands[0]), get_number(doc, &operands[1])) {
             return Some((tx, ty));
         }
-    }
     None
 }
 
@@ -564,13 +556,12 @@ fn make_bbox(
 }
 
 fn font_extents(state: &TextState, fonts: &BTreeMap<Vec<u8>, FontMetrics>) -> (f32, f32) {
-    if let Some(name) = &state.font_name {
-        if let Some(metrics) = fonts.get(name) {
+    if let Some(name) = &state.font_name
+        && let Some(metrics) = fonts.get(name) {
             return (
                 metrics.ascent * state.font_size / 1000.0,
                 metrics.descent * state.font_size / 1000.0,
             );
         }
-    }
     (700.0 * state.font_size / 1000.0, -200.0 * state.font_size / 1000.0)
 }

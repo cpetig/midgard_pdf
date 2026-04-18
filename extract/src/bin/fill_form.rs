@@ -58,7 +58,7 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
         let field_obj = doc.get_object(*field_id)?;
         if let Ok(field_dict) = field_obj.as_dict() {
             // Get field name
-            let name_obj = match field_dict.get_deref(b"T", &doc) {
+            let name_obj = match field_dict.get_deref(b"T", doc) {
                 Ok(obj) => obj,
                 Err(_) => return Ok(()),
             };
@@ -69,7 +69,7 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
             };
 
             // Get rect
-            let rect_obj = match field_dict.get_deref(b"Rect", &doc) {
+            let rect_obj = match field_dict.get_deref(b"Rect", doc) {
                 Ok(obj) => obj,
                 Err(_) => return Ok(()),
             };
@@ -88,7 +88,7 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
             };
 
             // Get page number
-            let page_num = if let Ok(page_ref) = field_dict.get_deref(b"P", &doc) {
+            let page_num = if let Ok(page_ref) = field_dict.get_deref(b"P", doc) {
                 if let Object::Reference(page_id) = page_ref {
                     let pages_map = doc.get_pages();
                     let mut page_num = 1;
@@ -148,7 +148,7 @@ fn get_number(doc: &Document, obj: &Object) -> Result<f32> {
         Object::Real(r) => Ok(*r),
         Object::Reference(r) => {
             let obj = doc.get_object(*r)?;
-            get_number(doc, &obj)
+            get_number(doc, obj)
         }
         _ => Err(anyhow::anyhow!("Not a number")),
     }
