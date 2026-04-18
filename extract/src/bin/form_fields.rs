@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use lopdf::{Document, Object};
 use std::env;
 use std::path::PathBuf;
@@ -77,12 +77,15 @@ fn print_field(doc: &Document, object: &Object, indent: usize, show_bbox: bool) 
         }
     }
 
-    if let Ok(kids_obj) = field_dict.get(b"Kids").and_then(|obj| doc.dereference(obj).map(|(_, obj)| obj))
-        && let Ok(kids) = kids_obj.as_array() {
-            for kid in kids {
-                print_field(doc, kid, indent + 1, show_bbox)?;
-            }
+    if let Ok(kids_obj) = field_dict
+        .get(b"Kids")
+        .and_then(|obj| doc.dereference(obj).map(|(_, obj)| obj))
+        && let Ok(kids) = kids_obj.as_array()
+    {
+        for kid in kids {
+            print_field(doc, kid, indent + 1, show_bbox)?;
         }
+    }
 
     Ok(())
 }
@@ -96,14 +99,16 @@ fn collect_rects(doc: &Document, field_dict: &lopdf::Dictionary) -> Result<Vec<S
 
     if let Ok(kids_obj) = field_dict.get(b"Kids")
         && let Ok((_, kids)) = doc.dereference(kids_obj)
-            && let Ok(kids_array) = kids.as_array() {
-                for kid in kids_array {
-                    if let Ok((_, kid_obj)) = doc.dereference(kid)
-                        && let Ok(kid_dict) = kid_obj.as_dict() {
-                            rects.extend(collect_rects(doc, kid_dict)?);
-                        }
-                }
+        && let Ok(kids_array) = kids.as_array()
+    {
+        for kid in kids_array {
+            if let Ok((_, kid_obj)) = doc.dereference(kid)
+                && let Ok(kid_dict) = kid_obj.as_dict()
+            {
+                rects.extend(collect_rects(doc, kid_dict)?);
             }
+        }
+    }
 
     Ok(rects)
 }

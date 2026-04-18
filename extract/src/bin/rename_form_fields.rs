@@ -24,7 +24,7 @@ fn main() -> Result<()> {
         .ok()
         .context("No form fields found")?;
     let fields = doc.dereference(fields)?.1.as_array()?;
-    let fields = fields.iter().cloned().collect::<Vec<_>>();
+    let fields = fields.clone();
 
     for field in fields {
         rename_field(&mut doc, &field, None)?;
@@ -60,7 +60,7 @@ fn rename_field(doc: &mut Document, object: &Object, prefix: Option<String>) -> 
         let kids_refs = if let Ok(kids_obj) = field_dict.get(b"Kids") {
             if let Ok((_, kids)) = doc.dereference(kids_obj) {
                 if let Ok(kids_array) = kids.as_array() {
-                    kids_array.iter().cloned().collect()
+                    kids_array.clone()
                 } else {
                     Vec::new()
                 }

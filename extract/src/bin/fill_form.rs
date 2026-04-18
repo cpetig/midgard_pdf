@@ -88,20 +88,16 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
             };
 
             // Get page number
-            let page_num = if let Ok(page_ref) = field_dict.get_deref(b"P", doc) {
-                if let Object::Reference(page_id) = page_ref {
-                    let pages_map = doc.get_pages();
-                    let mut page_num = 1;
-                    for (num, id) in pages_map {
-                        if id == *page_id {
-                            page_num = num;
-                            break;
-                        }
+            let page_num = if let Ok(Object::Reference(page_id)) = field_dict.get_deref(b"P", doc) {
+                let pages_map = doc.get_pages();
+                let mut page_num = 1;
+                for (num, id) in pages_map {
+                    if id == *page_id {
+                        page_num = num;
+                        break;
                     }
-                    page_num
-                } else {
-                    1
                 }
+                page_num
             } else {
                 1 // assume page 1 if not specified
             };
@@ -119,7 +115,10 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                 }
                 if let Some(text_field) = best_match {
                     // Set field value
-                    let value_obj = Object::String(text_field.text.as_bytes().to_vec(), lopdf::StringFormat::Literal);
+                    let value_obj = Object::String(
+                        text_field.text.as_bytes().to_vec(),
+                        lopdf::StringFormat::Literal,
+                    );
                     let mut new_dict = field_dict.clone();
                     new_dict.set(b"V".to_vec(), value_obj);
                     doc.set_object(*field_id, Object::Dictionary(new_dict));

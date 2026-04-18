@@ -1,5 +1,8 @@
 use anyhow::{Context, Result};
-use lopdf::{content::{Content, Operation}, Document, Encoding, Object};
+use lopdf::{
+    Document, Encoding, Object,
+    content::{Content, Operation},
+};
 use serde::Serialize;
 use std::{collections::BTreeMap, env, path::PathBuf};
 
@@ -62,10 +65,7 @@ struct FontMetrics<'a> {
 impl<'a> FontMetrics<'a> {
     fn from_font_dict(font: &'a lopdf::Dictionary, doc: &'a Document) -> Self {
         let encoding = font.get_font_encoding(doc).ok();
-        let first_char = font
-            .get(b"FirstChar")
-            .and_then(Object::as_i64)
-            .unwrap_or(0);
+        let first_char = font.get(b"FirstChar").and_then(Object::as_i64).unwrap_or(0);
         let widths = font
             .get(b"Widths")
             .and_then(Object::as_array)
@@ -90,19 +90,28 @@ impl<'a> FontMetrics<'a> {
     fn font_metrics_from_descriptor(font: &lopdf::Dictionary, doc: &Document) -> (f32, f32) {
         if let Ok(descriptor_obj) = font.get(b"FontDescriptor")
             && let Ok((_, descriptor)) = doc.dereference(descriptor_obj)
-                && let Ok(descriptor_dict) = descriptor.as_dict() {
-                    let ascent = descriptor_dict.get(b"Ascent").and_then(Object::as_f32).unwrap_or(0.0);
-                    let descent = descriptor_dict.get(b"Descent").and_then(Object::as_f32).unwrap_or(0.0);
-                    if ascent != 0.0 || descent != 0.0 {
-                        return (ascent, descent);
-                    }
-                }
+            && let Ok(descriptor_dict) = descriptor.as_dict()
+        {
+            let ascent = descriptor_dict
+                .get(b"Ascent")
+                .and_then(Object::as_f32)
+                .unwrap_or(0.0);
+            let descent = descriptor_dict
+                .get(b"Descent")
+                .and_then(Object::as_f32)
+                .unwrap_or(0.0);
+            if ascent != 0.0 || descent != 0.0 {
+                return (ascent, descent);
+            }
+        }
         (700.0, -200.0)
     }
 
     fn decode_text(&self, bytes: &[u8]) -> String {
         if let Some(encoding) = &self.encoding {
-            encoding.bytes_to_string(bytes).unwrap_or_else(|_| String::from_utf8_lossy(bytes).to_string())
+            encoding
+                .bytes_to_string(bytes)
+                .unwrap_or_else(|_| String::from_utf8_lossy(bytes).to_string())
         } else {
             String::from_utf8_lossy(bytes).to_string()
         }
@@ -216,54 +225,81 @@ fn extract_text_entries(
                 state.tm = state.tlm;
             }
             "Tf" if in_text => {
-                if let Some(font_name) = operation.operands.first().and_then(|operand| get_name(doc, operand)) {
+                if let Some(font_name) = operation
+                    .operands
+                    .first()
+                    .and_then(|operand| get_name(doc, operand))
+                {
                     state.font_name = Some(font_name.to_vec());
                 }
                 if let Some(size_obj) = operation.operands.get(1)
-                    && let Ok(size) = get_number(doc, size_obj) {
-                        state.font_size = size;
-                    }
+                    && let Ok(size) = get_number(doc, size_obj)
+                {
+                    state.font_size = size;
+                }
             }
             "Tc" if in_text => {
-                if let Some(value) = operation.operands.first().and_then(|operand| get_number(doc, operand).ok()) {
+                if let Some(value) = operation
+                    .operands
+                    .first()
+                    .and_then(|operand| get_number(doc, operand).ok())
+                {
                     state.char_space = value;
                 }
             }
             "Tw" if in_text => {
-                if let Some(value) = operation.operands.first().and_then(|operand| get_number(doc, operand).ok()) {
+                if let Some(value) = operation
+                    .operands
+                    .first()
+                    .and_then(|operand| get_number(doc, operand).ok())
+                {
                     state.word_space = value;
                 }
             }
             "Th" if in_text => {
-                if let Some(value) = operation.operands.first().and_then(|operand| get_number(doc, operand).ok()) {
+                if let Some(value) = operation
+                    .operands
+                    .first()
+                    .and_then(|operand| get_number(doc, operand).ok())
+                {
                     state.hscale = value / 100.0;
                 }
             }
             "TL" if in_text => {
-                if let Some(value) = operation.operands.first().and_then(|operand| get_number(doc, operand).ok()) {
+                if let Some(value) = operation
+                    .operands
+                    .first()
+                    .and_then(|operand| get_number(doc, operand).ok())
+                {
                     state.leading = value;
                 }
             }
             "Ts" if in_text => {
-                if let Some(value) = operation.operands.first().and_then(|operand| get_number(doc, operand).ok()) {
+                if let Some(value) = operation
+                    .operands
+                    .first()
+                    .and_then(|operand| get_number(doc, operand).ok())
+                {
                     state.rise = value;
                 }
             }
             "Tj" if in_text => {
                 if let Some(text_obj) = operation.operands.first()
-                    && let Some(entry) = make_text_entry(doc, &state, text_obj, fonts) {
-                        entries.push(entry);
-                        let width = calculate_text_width(doc, &state, text_obj, fonts);
-                        state.tm = multiply_matrix(state.tm, [1.0, 0.0, 0.0, 1.0, width, 0.0]);
-                    }
+                    && let Some(entry) = make_text_entry(doc, &state, text_obj, fonts)
+                {
+                    entries.push(entry);
+                    let width = calculate_text_width(doc, &state, text_obj, fonts);
+                    state.tm = multiply_matrix(state.tm, [1.0, 0.0, 0.0, 1.0, width, 0.0]);
+                }
             }
             "TJ" if in_text => {
                 if let Some(array_obj) = operation.operands.first()
-                    && let Some(entry) = make_text_entry(doc, &state, array_obj, fonts) {
-                        entries.push(entry);
-                        let width = calculate_text_width(doc, &state, array_obj, fonts);
-                        state.tm = multiply_matrix(state.tm, [1.0, 0.0, 0.0, 1.0, width, 0.0]);
-                    }
+                    && let Some(entry) = make_text_entry(doc, &state, array_obj, fonts)
+                {
+                    entries.push(entry);
+                    let width = calculate_text_width(doc, &state, array_obj, fonts);
+                    state.tm = multiply_matrix(state.tm, [1.0, 0.0, 0.0, 1.0, width, 0.0]);
+                }
             }
             _ => {}
         }
@@ -279,7 +315,8 @@ fn fuse_text_entries(mut entries: Vec<TextEntry>) -> Vec<TextField> {
 
     // Sort by y1 (top), then by x1 (left)
     entries.sort_by(|a, b| {
-        a.y1.partial_cmp(&b.y1).unwrap_or(std::cmp::Ordering::Equal)
+        a.y1.partial_cmp(&b.y1)
+            .unwrap_or(std::cmp::Ordering::Equal)
             .then(a.x1.partial_cmp(&b.x1).unwrap_or(std::cmp::Ordering::Equal))
     });
 
@@ -403,13 +440,14 @@ fn decode_and_width(
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
 ) -> (String, f32) {
     if let Some(name) = &state.font_name
-        && let Some(metrics) = fonts.get(name) {
-            let text = metrics.decode_text(bytes);
-            let width = metrics.width_for_bytes(bytes, state.char_space, state.word_space)
-                * state.font_size
-                * state.hscale;
-            return (text, width);
-        }
+        && let Some(metrics) = fonts.get(name)
+    {
+        let text = metrics.decode_text(bytes);
+        let width = metrics.width_for_bytes(bytes, state.char_space, state.word_space)
+            * state.font_size
+            * state.hscale;
+        return (text, width);
+    }
     (
         String::from_utf8_lossy(bytes).to_string(),
         bytes.len() as f32 * state.font_size * state.hscale * 0.5,
@@ -436,17 +474,14 @@ fn decode_and_width_array(
     (text, width)
 }
 
-fn width_for_bytes(
-    bytes: &[u8],
-    state: &TextState,
-    fonts: &BTreeMap<Vec<u8>, FontMetrics>,
-) -> f32 {
+fn width_for_bytes(bytes: &[u8], state: &TextState, fonts: &BTreeMap<Vec<u8>, FontMetrics>) -> f32 {
     if let Some(name) = &state.font_name
-        && let Some(metrics) = fonts.get(name) {
-            return metrics.width_for_bytes(bytes, state.char_space, state.word_space)
-                * state.font_size
-                * state.hscale;
-        }
+        && let Some(metrics) = fonts.get(name)
+    {
+        return metrics.width_for_bytes(bytes, state.char_space, state.word_space)
+            * state.font_size
+            * state.hscale;
+    }
     bytes.len() as f32 * state.font_size * state.hscale * 0.5
 }
 
@@ -492,9 +527,10 @@ fn parse_matrix(doc: &Document, operands: &[Object]) -> Option<[f32; 6]> {
 
 fn parse_two_numbers(doc: &Document, operands: &[Object]) -> Option<(f32, f32)> {
     if operands.len() >= 2
-        && let (Ok(tx), Ok(ty)) = (get_number(doc, &operands[0]), get_number(doc, &operands[1])) {
-            return Some((tx, ty));
-        }
+        && let (Ok(tx), Ok(ty)) = (get_number(doc, &operands[0]), get_number(doc, &operands[1]))
+    {
+        return Some((tx, ty));
+    }
     None
 }
 
@@ -510,43 +546,34 @@ fn multiply_matrix(first: [f32; 6], second: [f32; 6]) -> [f32; 6] {
 }
 
 fn tm_transform(tm: [f32; 6], x: f32, y: f32) -> (f32, f32) {
-    (
-        tm[0] * x + tm[2] * y + tm[4],
-        tm[1] * x + tm[3] * y + tm[5],
-    )
+    (tm[0] * x + tm[2] * y + tm[4], tm[1] * x + tm[3] * y + tm[5])
 }
 
-fn make_bbox(
-    state: &TextState,
-    width: f32,
-    fonts: &BTreeMap<Vec<u8>, FontMetrics>,
-) -> [f32; 4] {
+fn make_bbox(state: &TextState, width: f32, fonts: &BTreeMap<Vec<u8>, FontMetrics>) -> [f32; 4] {
     let (ascent, descent) = font_extents(state, fonts);
     let origin = tm_transform(state.tm, 0.0, state.rise * state.font_size);
     let end = tm_transform(state.tm, width, state.rise * state.font_size);
-    let top = tm_transform(
-        state.tm,
-        0.0,
-        state.rise * state.font_size + ascent,
-    );
-    let top_right = tm_transform(
-        state.tm,
-        width,
-        state.rise * state.font_size + ascent,
-    );
-    let bottom = tm_transform(
-        state.tm,
-        0.0,
-        state.rise * state.font_size + descent,
-    );
-    let bottom_right = tm_transform(
-        state.tm,
-        width,
-        state.rise * state.font_size + descent,
-    );
+    let top = tm_transform(state.tm, 0.0, state.rise * state.font_size + ascent);
+    let top_right = tm_transform(state.tm, width, state.rise * state.font_size + ascent);
+    let bottom = tm_transform(state.tm, 0.0, state.rise * state.font_size + descent);
+    let bottom_right = tm_transform(state.tm, width, state.rise * state.font_size + descent);
 
-    let xs = [origin.0, end.0, top.0, top_right.0, bottom.0, bottom_right.0];
-    let ys = [origin.1, end.1, top.1, top_right.1, bottom.1, bottom_right.1];
+    let xs = [
+        origin.0,
+        end.0,
+        top.0,
+        top_right.0,
+        bottom.0,
+        bottom_right.0,
+    ];
+    let ys = [
+        origin.1,
+        end.1,
+        top.1,
+        top_right.1,
+        bottom.1,
+        bottom_right.1,
+    ];
     [
         xs.iter().cloned().fold(f32::INFINITY, f32::min),
         ys.iter().cloned().fold(f32::INFINITY, f32::min),
@@ -557,11 +584,15 @@ fn make_bbox(
 
 fn font_extents(state: &TextState, fonts: &BTreeMap<Vec<u8>, FontMetrics>) -> (f32, f32) {
     if let Some(name) = &state.font_name
-        && let Some(metrics) = fonts.get(name) {
-            return (
-                metrics.ascent * state.font_size / 1000.0,
-                metrics.descent * state.font_size / 1000.0,
-            );
-        }
-    (700.0 * state.font_size / 1000.0, -200.0 * state.font_size / 1000.0)
+        && let Some(metrics) = fonts.get(name)
+    {
+        return (
+            metrics.ascent * state.font_size / 1000.0,
+            metrics.descent * state.font_size / 1000.0,
+        );
+    }
+    (
+        700.0 * state.font_size / 1000.0,
+        -200.0 * state.font_size / 1000.0,
+    )
 }
