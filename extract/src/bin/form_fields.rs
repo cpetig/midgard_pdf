@@ -122,7 +122,22 @@ fn object_to_string(doc: &Document, object: &Object) -> Result<String> {
         Object::Integer(value) => value.to_string(),
         Object::Real(value) => value.to_string(),
         Object::Name(name) => format!("/{}", String::from_utf8_lossy(name)),
-        Object::String(bytes, _) => String::from_utf8_lossy(bytes).into_owned(),
+        Object::String(bytes, _) => {
+            // Check for UTF-16BE encoding (BOM: 0xFE 0xFF)
+            if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
+                // Decode UTF-16BE
+                let mut utf16_units = Vec::new();
+                for chunk in bytes[2..].chunks(2) {
+                    if chunk.len() == 2 {
+                        let unit = ((chunk[0] as u16) << 8) | (chunk[1] as u16);
+                        utf16_units.push(unit);
+                    }
+                }
+                String::from_utf16_lossy(&utf16_units)
+            } else {
+                String::from_utf8_lossy(bytes).into_owned()
+            }
+        }
         Object::Array(array) => array
             .iter()
             .map(|item| object_to_string(doc, item))

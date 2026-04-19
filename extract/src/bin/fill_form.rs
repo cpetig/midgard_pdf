@@ -133,11 +133,17 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                 }
                 if let Some(text_field) = best_match {
                     eprintln!("  ✓ Matched: '{}' (overlap: {:.0})", text_field.text, max_overlap);
-                    // Set field value
-                    let value_obj = Object::String(
-                        text_field.text.as_bytes().to_vec(),
-                        lopdf::StringFormat::Literal,
-                    );
+                    // Set field value - encode as UTF-16BE for proper Unicode support in PDF
+                    let mut utf16_bytes = vec![0xFE, 0xFF]; // UTF-16BE BOM
+                    for ch in text_field.text.chars() {
+                        let mut buf = [0u16; 2];
+                        let encoded = ch.encode_utf16(&mut buf);
+                        for u16_val in encoded {
+                            utf16_bytes.push(((*u16_val >> 8) & 0xFF) as u8);
+                            utf16_bytes.push((*u16_val & 0xFF) as u8);
+                        }
+                    }
+                    let value_obj = Object::String(utf16_bytes, lopdf::StringFormat::Literal);
                     let mut new_dict = field_dict.clone();
                     new_dict.set(b"V".to_vec(), value_obj);
                     doc.set_object(*field_id, Object::Dictionary(new_dict));
