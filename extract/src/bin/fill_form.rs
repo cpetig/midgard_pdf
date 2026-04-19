@@ -71,24 +71,33 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                 Ok(obj) => obj,
                 Err(_) => return Ok(()),
             };
-            let _name = if let Ok(name_str) = name_obj.as_str() {
+            let name = if let Ok(name_str) = name_obj.as_str() {
                 String::from_utf8_lossy(name_str).to_string()
             } else {
                 return Ok(());
             };
-
-            // Get rect - scale by 1/150 and swap x/y
+            eprintln!("Processing field: {}", name);
+            // Get rect - scale from PDF points to pixels (150/72) and swap x/y
             let rect_obj = match field_dict.get_deref(b"Rect", doc) {
                 Ok(obj) => obj,
                 Err(_) => return Ok(()),
             };
             let rect = if let Ok(rect_array) = rect_obj.as_array() {
                 if rect_array.len() == 4 {
-                    let y1 = get_number(doc, &rect_array[0])? / 150.0;
-                    let x1 = get_number(doc, &rect_array[1])? / 150.0;
-                    let y2 = get_number(doc, &rect_array[2])? / 150.0;
-                    let x2 = get_number(doc, &rect_array[3])? / 150.0;
-                    [x1, y1, x2, y2]
+                    let val0 = get_number(doc, &rect_array[0])?;
+                    let val1 = get_number(doc, &rect_array[1])?;
+                    let val2 = get_number(doc, &rect_array[2])?;
+                    let val3 = get_number(doc, &rect_array[3])?;
+                    
+                    // Scale from PDF points (72 DPI) to pixels at 150 DPI: multiply by 150/72
+                    let scale = 150.0 / 72.0;
+                    let scaled0 = val0 * scale;
+                    let scaled1 = val1 * scale;
+                    let scaled2 = val2 * scale;
+                    let scaled3 = val3 * scale;
+                    
+                    // Array is [y_min, x_min, y_max, x_max], rearrange to [x1, y1, x2, y2]
+                    [scaled1, scaled0, scaled3, scaled2]
                 } else {
                     return Ok(());
                 }
@@ -123,6 +132,7 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                     }
                 }
                 if let Some(text_field) = best_match {
+                    eprintln!("  ✓ Matched: '{}' (overlap: {:.0})", text_field.text, max_overlap);
                     // Set field value
                     let value_obj = Object::String(
                         text_field.text.as_bytes().to_vec(),
@@ -131,7 +141,11 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                     let mut new_dict = field_dict.clone();
                     new_dict.set(b"V".to_vec(), value_obj);
                     doc.set_object(*field_id, Object::Dictionary(new_dict));
+                } else {
+                    eprintln!("  ✗ No match");
                 }
+            } else {
+                eprintln!("  ✗ Page {} not in YAML", page_num);
             }
         }
     }
