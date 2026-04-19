@@ -19,11 +19,20 @@ fn main() -> Result<()> {
     let yaml_path = env::args()
         .nth(1)
         .map(PathBuf::from)
-        .context("Usage: fill_form <yaml-path> <pdf-path>")?;
+        .context("Usage: fill_form <yaml-path> <pdf-path> [output-path]")?;
     let pdf_path = env::args()
         .nth(2)
         .map(PathBuf::from)
-        .context("Usage: fill_form <yaml-path> <pdf-path>")?;
+        .context("Usage: fill_form <yaml-path> <pdf-path> [output-path]")?;
+    
+    let output_path = env::args().nth(3).map(PathBuf::from).or_else(|| {
+        let stem = pdf_path.file_stem()?;
+        let ext = pdf_path.extension()?;
+        let mut output = stem.to_os_string();
+        output.push("_filled.");
+        output.push(ext);
+        Some(pdf_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join(output))
+    }).context("Could not determine output path")?;
 
     let yaml_content = fs::read_to_string(&yaml_path)?;
     let pages: Vec<Page> = serde_yaml::from_str(&yaml_content)?;
@@ -48,8 +57,8 @@ fn main() -> Result<()> {
         fill_field(&mut doc, &field_ref, &pages)?;
     }
 
-    doc.save(&pdf_path)?;
-    println!("Form filled and saved.");
+    doc.save(&output_path)?;
+    println!("Form filled and saved to {}", output_path.display());
     Ok(())
 }
 
@@ -68,17 +77,17 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                 return Ok(());
             };
 
-            // Get rect
+            // Get rect - scale by 1/150 and swap x/y
             let rect_obj = match field_dict.get_deref(b"Rect", doc) {
                 Ok(obj) => obj,
                 Err(_) => return Ok(()),
             };
             let rect = if let Ok(rect_array) = rect_obj.as_array() {
                 if rect_array.len() == 4 {
-                    let x1 = get_number(doc, &rect_array[0])?;
-                    let y1 = get_number(doc, &rect_array[1])?;
-                    let x2 = get_number(doc, &rect_array[2])?;
-                    let y2 = get_number(doc, &rect_array[3])?;
+                    let y1 = get_number(doc, &rect_array[0])? / 150.0;
+                    let x1 = get_number(doc, &rect_array[1])? / 150.0;
+                    let y2 = get_number(doc, &rect_array[2])? / 150.0;
+                    let x2 = get_number(doc, &rect_array[3])? / 150.0;
                     [x1, y1, x2, y2]
                 } else {
                     return Ok(());
