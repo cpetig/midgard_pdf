@@ -32,7 +32,7 @@ fn main() -> Result<()> {
         let fonts = doc.get_page_fonts(page_id)?;
         let font_metrics = build_font_metrics(&doc, &fonts);
         let content = doc.get_and_decode_page_content(page_id)?;
-        let entries = extract_text_entries(&doc, &font_metrics, &content);
+        let entries = extract_text_entries(&doc, &font_metrics, &content, page_number);
         let text_fields = fuse_text_entries(entries);
         output_pages.push(Page {
             number: page_number,
@@ -186,6 +186,7 @@ fn extract_text_entries(
     doc: &Document,
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
     content: &Content<Vec<Operation>>,
+    page_number: u32,
 ) -> Vec<TextEntry> {
     let mut entries = Vec::new();
     let mut state = TextState::default();
@@ -285,7 +286,7 @@ fn extract_text_entries(
             }
             "Tj" if in_text => {
                 if let Some(text_obj) = operation.operands.first()
-                    && let Some(entry) = make_text_entry(doc, &state, text_obj, fonts)
+                    && let Some(entry) = make_text_entry(doc, &state, text_obj, fonts, page_number)
                 {
                     entries.push(entry);
                     let width = calculate_text_width(doc, &state, text_obj, fonts);
@@ -294,7 +295,7 @@ fn extract_text_entries(
             }
             "TJ" if in_text => {
                 if let Some(array_obj) = operation.operands.first()
-                    && let Some(entry) = make_text_entry(doc, &state, array_obj, fonts)
+                    && let Some(entry) = make_text_entry(doc, &state, array_obj, fonts, page_number)
                 {
                     entries.push(entry);
                     let width = calculate_text_width(doc, &state, array_obj, fonts);
@@ -375,6 +376,7 @@ fn make_text_entry(
     state: &TextState,
     text_obj: &Object,
     fonts: &BTreeMap<Vec<u8>, FontMetrics>,
+    page_number: u32,
 ) -> Option<TextEntry> {
     let (text, length) = if let Ok(string_bytes) = extract_bytes(doc, text_obj) {
         let (decoded, width) = decode_and_width(string_bytes, state, fonts);
@@ -391,12 +393,14 @@ fn make_text_entry(
     };
 
     let bbox = make_bbox(state, length, fonts);
+    // Subtract y-offset for multi-page documents: (page-1)*1240
+    let y_offset = (page_number - 1) as f32 * 1240.0;
     Some(TextEntry {
         text,
         x1: bbox[0],
-        y1: bbox[1],
+        y1: bbox[1] - y_offset,
         x2: bbox[2],
-        y2: bbox[3],
+        y2: bbox[3] - y_offset,
     })
 }
 
