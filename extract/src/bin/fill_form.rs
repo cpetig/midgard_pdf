@@ -24,15 +24,24 @@ fn main() -> Result<()> {
         .nth(2)
         .map(PathBuf::from)
         .context("Usage: fill_form <yaml-path> <pdf-path> [output-path]")?;
-    
-    let output_path = env::args().nth(3).map(PathBuf::from).or_else(|| {
-        let stem = pdf_path.file_stem()?;
-        let ext = pdf_path.extension()?;
-        let mut output = stem.to_os_string();
-        output.push("_filled.");
-        output.push(ext);
-        Some(pdf_path.parent().unwrap_or_else(|| std::path::Path::new(".")).join(output))
-    }).context("Could not determine output path")?;
+
+    let output_path = env::args()
+        .nth(3)
+        .map(PathBuf::from)
+        .or_else(|| {
+            let stem = pdf_path.file_stem()?;
+            let ext = pdf_path.extension()?;
+            let mut output = stem.to_os_string();
+            output.push("_filled.");
+            output.push(ext);
+            Some(
+                pdf_path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("."))
+                    .join(output),
+            )
+        })
+        .context("Could not determine output path")?;
 
     let yaml_content = fs::read_to_string(&yaml_path)?;
     let pages: Vec<Page> = serde_yaml::from_str(&yaml_content)?;
@@ -88,14 +97,14 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                     let val1 = get_number(doc, &rect_array[1])?;
                     let val2 = get_number(doc, &rect_array[2])?;
                     let val3 = get_number(doc, &rect_array[3])?;
-                    
+
                     // Scale from PDF points (72 DPI) to pixels at 150 DPI: multiply by 150/72
                     let scale = 150.0 / 72.0;
                     let scaled0 = val0 * scale;
                     let scaled1 = val1 * scale;
                     let scaled2 = val2 * scale;
                     let scaled3 = val3 * scale;
-                    
+
                     // Array is [y_min, x_min, y_max, x_max], rearrange to [x1, y1, x2, y2]
                     [scaled1, scaled0, scaled3, scaled2]
                 } else {
@@ -132,7 +141,10 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                     }
                 }
                 if let Some(text_field) = best_match {
-                    eprintln!("  ✓ Matched: '{}' (overlap: {:.0})", text_field.text, max_overlap);
+                    eprintln!(
+                        "  ✓ Matched: '{}' (overlap: {:.0})",
+                        text_field.text, max_overlap
+                    );
                     // Set field value - encode as UTF-16BE for proper Unicode support in PDF
                     let mut utf16_bytes = vec![0xFE, 0xFF]; // UTF-16BE BOM
                     for ch in text_field.text.chars() {
