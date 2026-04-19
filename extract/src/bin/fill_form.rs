@@ -48,22 +48,30 @@ fn main() -> Result<()> {
 
     let mut doc = Document::load(&pdf_path)?;
 
-    let mut field_refs = Vec::new();
-    {
-        let catalog = doc.catalog()?;
-        let acroform_obj = catalog.get_deref(b"AcroForm", &doc)?;
-        if let Ok(acroform_dict) = acroform_obj.as_dict() {
-            let fields_obj = acroform_dict.get_deref(b"Fields", &doc)?;
-            if let Ok(fields_array) = fields_obj.as_array() {
-                for field_ref in fields_array {
-                    field_refs.push(field_ref.clone());
+    // Get all pages from the document
+    let pages_map = doc.get_pages();
+
+    // Collect all annotations to process before mutating doc
+    let mut annotations_to_process: Vec<(u32, Object)> = Vec::new();
+
+    // Iterate on each page and find annotations (fields) on that page
+    for (page_num, page_id) in pages_map {
+        let page_obj = doc.get_object(page_id)?;
+        if let Ok(page_dict) = page_obj.as_dict() {
+            // Get annotations on this page
+            if let Ok(annots_obj) = page_dict.get_deref(b"Annots", &doc) {
+                if let Ok(annots_array) = annots_obj.as_array() {
+                    for annot_ref in annots_array {
+                        annotations_to_process.push((page_num, annot_ref.clone()));
+                    }
                 }
             }
         }
     }
 
-    for field_ref in field_refs {
-        fill_field(&mut doc, &field_ref, &pages)?;
+    // Now process all annotations with mutable access to doc
+    for (page_num, annot_ref) in annotations_to_process {
+        fill_field_on_page(&mut doc, &annot_ref, page_num, &pages)?;
     }
 
     doc.save(&output_path)?;
@@ -71,7 +79,12 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<()> {
+fn fill_field_on_page(
+    doc: &mut Document,
+    field_ref: &Object,
+    page_num: u32,
+    pages: &[Page],
+) -> Result<()> {
     if let Object::Reference(field_id) = field_ref {
         let field_obj = doc.get_object(*field_id)?;
         if let Ok(field_dict) = field_obj.as_dict() {
@@ -85,7 +98,8 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
             } else {
                 return Ok(());
             };
-            eprintln!("Processing field: {}", name);
+            eprintln!("Processing field: {} (page {})", name, page_num);
+
             // Get rect - scale from PDF points to pixels (150/72) and swap x/y
             let rect_obj = match field_dict.get_deref(b"Rect", doc) {
                 Ok(obj) => obj,
@@ -114,22 +128,7 @@ fn fill_field(doc: &mut Document, field_ref: &Object, pages: &[Page]) -> Result<
                 return Ok(());
             };
 
-            // Get page number
-            let page_num = if let Ok(Object::Reference(page_id)) = field_dict.get_deref(b"P", doc) {
-                let pages_map = doc.get_pages();
-                let mut page_num = 1;
-                for (num, id) in pages_map {
-                    if id == *page_id {
-                        page_num = num;
-                        break;
-                    }
-                }
-                page_num
-            } else {
-                1 // assume page 1 if not specified
-            };
-
-            // Find matching text field
+            // Find matching text field on this page
             if let Some(page) = pages.iter().find(|p| p.number == page_num) {
                 let mut best_match = None;
                 let mut max_overlap = 0.0;
