@@ -59,13 +59,12 @@ fn main() -> Result<()> {
         let page_obj = doc.get_object(page_id)?;
         if let Ok(page_dict) = page_obj.as_dict() {
             // Get annotations on this page
-            if let Ok(annots_obj) = page_dict.get_deref(b"Annots", &doc) {
-                if let Ok(annots_array) = annots_obj.as_array() {
+            if let Ok(annots_obj) = page_dict.get_deref(b"Annots", &doc)
+                && let Ok(annots_array) = annots_obj.as_array() {
                     for annot_ref in annots_array {
                         annotations_to_process.push((page_num, annot_ref.clone()));
                     }
                 }
-            }
         }
     }
 
