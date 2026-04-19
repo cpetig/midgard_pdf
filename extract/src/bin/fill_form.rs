@@ -132,7 +132,15 @@ fn fill_field_on_page(
                 let mut best_match = None;
                 let mut max_overlap = 0.0;
                 for text_field in &page.text_fields {
-                    let overlap = compute_overlap(rect, text_field.bbox);
+                    // Adjust y coordinates for page offset: subtract (page-1)*1240 from y values
+                    let y_offset = (page_num - 1) as f32 * 1240.0;
+                    let adjusted_bbox = [
+                        text_field.bbox[0], // x1 unchanged
+                        text_field.bbox[1] - y_offset, // y1 adjusted
+                        text_field.bbox[2], // x2 unchanged
+                        text_field.bbox[3] - y_offset, // y2 adjusted
+                    ];
+                    let overlap = compute_overlap(rect, adjusted_bbox);
                     if overlap > max_overlap {
                         max_overlap = overlap;
                         best_match = Some(text_field);
